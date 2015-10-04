@@ -156,7 +156,7 @@ float turbulence(vec3 P) {
 	  float d = dot(vec3(x,y,z), vec3(1.,1.,1.));
 	  if (d > 0.)
             s += 0.6 * d;
-      gl_FragColor = vec4(color, 1.);        // Set opacity to 1.
+      gl_FragColor = vec4(color, 1.);        // Set opa	city to 1.
 	  if(uCursor.x > z)
 		gl_FragColor = vec4(fractal(color) * vec3(1.0, 5.0, 8.5), 1.);
 	  else if((-uCursor.x) > z)
@@ -165,8 +165,7 @@ float turbulence(vec3 P) {
 		gl_FragColor = vec4(turbulence(color) * vec3(2.6, 2.0, 8.5), 1.);
 	  else if((-uCursor.y) > z)
 		gl_FragColor = vec4(turbulence(color) * vec3(3.6, 9.0, 3.5), 1.);
-	  else {gl_FragColor = vec4(s*fractal(color) * vec3(5
-	  .0, 1.0, 4.5), 1.);}
+	  else {gl_FragColor = vec4(s*fractal(color) * vec3(5.0, 1.0, 4.5), 1.);}
 	  }
    }
    
