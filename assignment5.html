@@ -1,0 +1,237 @@
+﻿<!DOCTYPE html>
+
+<html lang="en">
+<head>
+	<meta charset= "utf-8" />
+	<title>HTML5 Canvas Template</title>
+	<style>
+		body{
+			background-color: #008;
+		}
+        td{
+            color:cyan;
+            font-size: 30px;
+        }
+	</style>
+
+</head>
+<body>
+    <input type="button" id="follow" value="follow" />
+    <input type="button" id="unfollow" value="unfollow" />
+    <input type="button" id="up" value="Up" />
+    <input type="button" id="down" value="Down" />
+    <input type="button" id="left" value="Left" />
+    <input type="button" id="right" value="Right" />
+
+    <table>
+        <tr>
+            <td><canvas id="myCanvas" width="600" height="600">
+                </canvas></td>
+            <td width=50></td>
+            <td id = "pageText" valign=top>
+                This is a simple interactive animation that makes use of canvas transformations <br />
+                If the follow button is clicked, you can move the position of the objects all at once
+
+            </td>
+        </tr>
+        
+    </table>
+	
+		
+	 <script src="http://ajax.aspnetcdn.com/ajax/jQuery/jquery-1.7.1.min.js" type="text/javascript"></script>
+    <script src=drawlib1.js></script>
+	 <script type="text/javascript">
+	 $(document).ready(function() {
+		var canvas = $("#myCanvas").get(0);
+		var context = canvas.getContext("2d");
+
+		function getMousePos(canvas, evt) {
+		    var rect = canvas.getBoundingClientRect();
+		    return {
+		        x: evt.clientX - rect.left,
+		        y: evt.clientY - rect.top
+		    };
+		}
+		
+		    
+		function followMouse(evt) {
+		    var mousePos = getMousePos(canvas, evt);
+		    pacmen[0].posX = mousePos.x - 50;
+		    pacmen[0].posY = mousePos.y - 50;
+		    pacmen[1].posX = pacmen[0].posX - 100;
+		    pacmen[1].posY = pacmen[0].posY - 100;
+		    pacmen[2].posX = pacmen[1].posX - 150;
+		    pacmen[2].posY = pacmen[1].posY - 150;
+		}
+		$("#follow").click(function () {
+		       canvas.addEventListener('mousemove',followMouse,false);
+		 });
+		
+		
+		var up = 90, right = 0, down = 270, left = 180;
+
+		function Pacman(size, direction, speed, posX, posY) {
+		    this.startAngle = 0.25;
+		    this.endAngle = 1.75;
+		    this.gapClosing = true;
+		    this.size = size;
+		    this.direction = direction;
+		    this.speed = speed;
+		    this.posX = posX;
+		    this.posY = posY;
+		}
+	
+		
+
+		var pacmen = new Array();
+
+		pacmen.push(new Pacman(50, right, 10, 25, 25));
+		pacmen.push(new Pacman(25, right, 5, 100, 150));
+		pacmen.push(new Pacman(75, right, 15, 200, 300));
+		
+		function renderGrid(gridPixelSize, color) {
+		    context.save();
+		    context.lineWidth = 0.5;
+		    context.strokeStyle = color;
+		    //horizontal grid lines
+		    for (var i = 0; i <= canvas.height; i = i + gridPixelSize) {
+		        context.beginPath();
+		        context.moveTo(0, i);
+		        context.lineTo(canvas.width, i);
+		        context.closePath();
+		        context.stroke();
+		    }
+		    for (var j = 0; j <= canvas.width; j = j + gridPixelSize) {
+		        context.beginPath();
+		        context.moveTo(j, 0);
+		        context.lineTo(j, canvas.height);
+		        context.closePath();
+		        context.stroke();
+		    }
+		    context.restore();
+		}
+
+		function setAngles(pm) {
+		    if (pm.startAngle <= 0) pm.gapClosing = true;
+
+		    else if (pm.startAngle > 0.25) pm.gapClosing = false;
+
+		    if (pm.gapClosing) {
+		        pm.startAngle = pm.startAngle + 0.05;
+		        pm.endAngle = pm.endAngle - 0.05;
+		    }
+		    else {
+		        pm.startAngle = pm.startAngle - 0.05;
+		        pm.endAngle = pm.endAngle + 0.05;
+		    }
+		}
+
+		function renderContent(pm) {
+			 
+		    context.save();
+		    
+		    context.beginPath();
+		    context.fillStyle = "Yellow";
+		    context.strokeStyle = "Yellow";
+		    context.save();
+		    context.translate(pm.posX, pm.posY);
+		    context.rotate(-pm.direction * Math.PI / 180);
+		    context.translate(-pm.posX, -pm.posY);
+		    context.arc(pm.posX, pm.posY, pm.size, (pm.startAngle) * Math.PI, (pm.endAngle) * Math.PI);
+		    context.lineTo(pm.posX, pm.posY);
+		    context.stroke();
+		    context.fill();
+		    context.restore();
+		    context.restore();
+		}
+	     
+	     
+
+		function animationLoop() {
+		    canvas.width = canvas.width;
+		    renderGrid(20, "red");
+		    for (var i = 0; i < pacmen.length; i++) {
+		        var pm = pacmen[i];
+		        renderContent(pm);
+		        setAngles(pm);
+		        //used for the direction input
+		        switch (pm.direction) {
+		            case up:
+		                pm.posY -= pm.speed;
+		                if (pm.posY <= 0) v.direction = down;
+		                break;
+		            case down:
+		                pm.posY += pm.speed;
+		                if (pm.posY > 600) pm.direction = up;
+		                break;
+		            case left:
+		                pm.posX -= pm.speed;
+		                if (pm.posX < 0) pm.direction = right;
+		                break;
+		            case right:
+		                pm.posX += pm.speed;
+		                if (pm.posX > 600) pm.direction = left;
+		                break;
+		        }
+		        
+		    }
+		  
+		    setTimeout(animationLoop, 33);
+		}
+		animationLoop();
+	     
+		$("#up").click(function () {
+		    canvas.removeEventListener('mousemove', followMouse);
+		    pacmen[0].direction = up;
+		    pacmen[1].direction = up;
+		    pacmen[2].direction = up;
+		});
+		$("#down").click(function () {
+		    canvas.removeEventListener('mousemove', followMouse);
+		    pacmen[0].direction = down;
+		    pacmen[1].direction = down;
+		    pacmen[2].direction = down;
+		});
+		$("#left").click(function () {
+		    canvas.removeEventListener('mousemove', followMouse);
+		    pacmen[0].direction = left;
+		    pacmen[1].direction = left;
+		    pacmen[2].direction = left;
+		});
+		$("#right").click(function () {
+		    canvas.removeEventListener('mousemove', followMouse);
+		    pacmen[0].direction = right;
+		    pacmen[1].direction = right;
+		    pacmen[2].direction = right;
+		});
+		$("#unfollow").click(function () {
+		    canvas.removeEventListener('mousemove', followMouse);
+		    pacmen[0].posX = 25;
+		    pacmen[1].posY = 100;
+		    pacmen[2].posX = 100;
+		    
+		});
+	 });
+
+         
+		</script>
+	</body>
+	
+	</html>
+	
+
+<script src=drawlib1.js></script>
+<script>
+
+
+
+
+
+
+
+
+
+
+
+
+</script>
