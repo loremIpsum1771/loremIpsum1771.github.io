@@ -1,0 +1,262 @@
+<head>
+    <script src=g.js></script>
+    <script src=transformObj.js></script>
+    <script src=noise.js></script>
+</head>
+<body onload=g_start()>
+    <canvas id=myCanvas1 width=1000 height=640></canvas>
+    <script>
+   var w, h, g;
+
+
+   //plot curve on canvas
+   function plotCurve(C) {
+      g.beginPath();
+      for (var i = 0 ; i < C.length ; i++)
+         if (i == 0)
+            moveTo(C[i]);
+         else
+            lineTo(C[i]);
+      g.stroke();
+   }
+  
+
+   // Viewport transform from 3D to 2D
+   function viewport(p) {
+      return [ w/2 * p[0] + w/2, h/2 - p[1] * w/2 ];
+   }
+
+   function moveTo(p) {
+      var q = m.transform(p);  // APPLY 3D MATRIX TRANFORMATION
+      var xy = viewport(q);    // APPLY VIEWPORT TRANSFORM
+      g.moveTo(xy[0], xy[1]);
+   }
+
+   function lineTo(p) {
+      var q = m.transform(p);  // APPLY 3D MATRIX TRANFORMATION
+      var xy = viewport(q);    // APPLY VIEWPORT TRANSFORM
+      g.lineTo(xy[0], xy[1]);
+   }
+
+    //Calculates point on sphere
+   function spherePoint(uv) {
+      var u = uv[0];
+      var v = uv[1];
+      var phi = -Math.PI/2 + Math.PI * v;
+      var theta = 2 * Math.PI * u;
+      return [ Math.cos(phi) * Math.cos(theta),
+               Math.cos(phi) * Math.sin(theta),
+               Math.sin(phi)];
+   }
+
+    //Calculates point on cylinder
+   function cylinderPoint(uv) {
+       var u = uv[0];
+       var v = uv[1];
+       var theta = 2 * Math.PI * u;
+       return [Math.cos(theta),
+               Math.sin(theta),
+                2 * v - 1];
+   }
+
+    //Calculates point on torus
+   function torusPoint(uv, r) {
+      if (r === undefined)
+         r = 0.2;
+
+      var theta = 2 * Math.PI * uv[0];
+      var phi   = 2 * Math.PI * uv[1];
+
+      return [ (1 + r * Math.cos(phi)) * Math.cos(theta),
+               (1 + r * Math.cos(phi)) * Math.sin(theta),
+                    r * Math.sin(phi) ];
+   }
+    
+   var branches = new Array();
+   branches.push({
+       points: new Array({ x: 200, y: 400 }, { x: 200, y: 400 }, { x: 200, y: 400 }, { x: 200, y: 400 }),
+       direction: 0
+   });
+
+   
+
+   function bspline(context, points) {
+       context.beginPath();
+       for (var t = 0; t < 1; t += 0.1) {
+           var ax = (-points[0].x + 3 * points[1].x - 3 * points[2].x + points[3].x) / 6;
+           var ay = (-points[0].y + 3 * points[1].y - 3 * points[2].y + points[3].y) / 6;
+           var bx = (-points[0].x - 2 * points[1].x + points[2].x) / 2;
+           var by = (-points[0].y - 2 * points[1].y + points[2].y) / 2;
+           var cx = (-points[0].x + points[2].x) / 2;
+           var cy = (-points[0].y + points[2].y) / 2;
+           var dx = (points[0].x + 4 * points[1].x + points[2].x) / 6;
+           var dy = (points[0].y + 4 * points[1].y + points[2].y) / 6;
+           context.moveTo(
+               ax*Math.pow(t,3) + bx*Math.pow(t,2) + cx*t + dx,
+               ay*Math.pow(t,3) + by*Math.pow(t,2) + cy*t + dy
+               );
+           context.lineTo(
+               ax*Math.pow(t+0.1, 3) + bx*Math.pow(t+0.1, 2) + cx*(t+0.1) + dx,
+               ay*Math.pow(t+0.1,3) + by*Math.pow(t+0.1,2)  +  cy*(t+0.1) + dy
+               );
+           //m.translate(ax * Math.pow(t + 0.1, 3) + bx * Math.pow(t + 0.1, 2) + cx * (t + 0.1) + dx, ay * Math.pow(t + 0.1, 3) + by * Math.pow(t + 0.1, 2) + cy * (t + 0.1) + dy,0);
+       }
+       context.stroke();
+   }
+  
+
+
+
+   var interval;
+   function drawSpline(context, points, newpts) {
+       interval = setInterval(splineAnim(context, points, newpts), 160.67);
+       //console.log("interval set");
+   }
+   var t = 0;
+   function splineAnim(context, points, newpts) {
+       // Draw curve segment
+       var ax = (-points[0].x + 3 * points[1].x - 3 * points[2].x + points[3].x) / 6;
+       var ay = (-points[0].y + 3 * points[1].y - 3 * points[2].y + points[3].y) / 6;
+       var bx = (-points[0].x - 2 * points[1].x + points[2].x) / 2;
+       var by = (-points[0].y - 2 * points[1].y + points[2].y) / 2;
+       var cx = (-points[0].x + points[2].x) / 2;
+       var cy = (-points[0].y + points[2].y) / 2;
+       var dx = (points[0].x + 4 * points[1].x + points[2].x) / 6;
+       var dy = (points[0].y + 4 * points[1].y + points[2].y) / 6;
+       context.beginPath();
+       context.moveTo(
+           ax * Math.pow(t, 3) + bx * Math.pow(t, 2) + cx * t + dx,
+           ay * Math.pow(t, 3) + by * Math.pow(t, 2) + cy * t + dy
+           );
+       var ax2 = ax * Math.pow(t + 0.1, 3) + bx * Math.pow(t + 0.1, 2) + cx * (t + 0.1) + dx;
+       var ay2 = ay * Math.pow(t + 0.1, 3) + by * Math.pow(t + 0.1, 2) + cy * (t + 0.1) + dy;
+       
+       context.lineTo(
+           ax * Math.pow(t + 0.1, 3) + bx * Math.pow(t + 0.1, 2) + cx * (t + 0.1) + dx,
+           ay * Math.pow(t + 0.1, 3) + by * Math.pow(t + 0.1, 2) + cy * (t + 0.1) + dy
+           );
+       context.stroke();
+       //m.translate(ax * Math.pow(t + 0.1, 3) + bx * Math.pow(t + 0.1, 2) + cx * (t + 0.1) + dx, ay * Math.pow(t + 0.1, 3) + by * Math.pow(t + 0.1, 2) + cy * (t + 0.1) + dy, 0);
+       //console.log("ax2: " + ax2 + ", ay2: " + ay2);
+       var arr = [ax2, ay2];
+       newpts.push(arr);
+       t += 0.02;
+
+       //Reached end of curve
+       if (t > 1) clearInterval(interval);
+   }
+
+
+
+//# of mesh grid lines for parameters u and v
+   var num_u = 30 ;
+   var num_v = 25 ;
+
+   // Takes the parametric function as an argument and constructs 3D shape
+
+   function makeShape(num_u, num_v, eq, possRad) {
+      var shell = [];
+      for (var j = 0 ; j <= num_v ; j++) {
+          var v = j / num_v;
+          shell.push([]);
+         for (var i = 0 ; i <= num_u ; i++) {
+             var u = i / num_u;
+             var p = eq([u, v], possRad);
+            shell[j].push(p);
+         }
+      }
+      return shell;
+   }
+  
+   // Used to create shapes to render parametric surface
+
+   function renderShape(shape) {
+       var num_j = shape.length;
+       var num_i = shape[0].length;
+       for (var j = 0 ; j < num_j - 1 ; j++)
+           for (var i = 0 ; i < num_i - 1 ; i++) {
+              //if (i == 0 || i == 1) {
+              //    console.log("shape[j][i]: " + shape[j][i] + " shape[j+1][i]: " + shape[j + 1][i] + " shape[j+1][i+1]" + shape[j + 1][i + 1] + "shape[j][i+1]" + shape[j][i + 1]);
+              //}
+              plotCurve([shape[j][i],
+                          shape[j + 1][i],
+                          shape[j + 1][i + 1],
+                          shape[j][i + 1]]);
+          }
+   }
+        myCanvas1.animate = function (_g) {
+            function cos(x) { return Math.cos(x); }
+            function sin(x) { return Math.sin(x); }
+
+            var cylinder = makeShape(num_u, num_v, cylinderPoint, 0.6);
+            var torus = makeShape(num_u, num_v, torusPoint, 0.3);
+            var sphere = makeShape(num_u, num_v, spherePoint, 0.5);
+
+            g = _g;
+            w = g.canvas.width;
+            h = g.canvas.height;
+
+            //canvas background
+            g.fillStyle = 'rgb(100,225,800)';
+            g.beginPath();
+            g.moveTo(0, 0);
+            g.lineTo(w, 0);
+            g.lineTo(w, h);
+            g.lineTo(0, h);
+            g.lineTo(0, 0);
+            g.fill();
+
+            // ANIMATE THE SCENE.
+            m.identity();
+            //m.rotateX(.5 * time);
+            //m.rotateY(time * .5);
+            //m.translate(sin(5 *time)*  .2,cos(5 * time) * .4,.6)
+            //m.rotateZ(time * 5);
+            m.scale(.1, .1, .1);
+
+            g.strokeStyle = 'rgb(0,100,0)';
+            // m.translate(sin(time * 4), sin(time * 4) * cos(.2 * time), .7);
+      
+            var points = new Array({ x: 80.9, y: 58.5 }, { x: 35.0, y: 89.6 }, { x: 74.7, y: 17.4 }, { x: 54.8, y: 25.4 });
+
+      //var points = new Array({ x: 0.1, y: 0.5 }, { x: 500, y: 400 }, { x: 1000, y: 401 }, { x: 10, y: 120 });
+      var points = new Array({ x: -0.025, y: 0.05 }, { x: 0.0, y: 0.03 }, { x: 0.025, y: 0.3 }, { x: 0.05, y: 0.07 });
+      var newPoints = [];
+      drawSpline(g, points, newPoints);
+      //bspline(g, points);
+      //m.translate(sin(time * newPoints[0][0]), cos(time * newPoints[0][1]), .7);
+      for (var i = 0; i < newPoints.length ; i++) {
+          m.translate(newPoints[i][0], newPoints[i][1], .7);
+          console.log("for loop called ");
+      }
+      renderShape(sphere);
+      m.identity();
+      for (var i = 0; i < newPoints.length ; i++) {
+          m.translate(newPoints[i][0], newPoints[i][1], .9);
+      }
+      m.scale(.1, .1, .1);
+      renderShape(torus);
+      //m.identity();
+      m.translate(.5, .4, .25);
+      m.rotateX(.8);
+      for (var i = 0; i < newPoints.length ; i++) {
+          m.translate(newPoints[i][0], newPoints[i][1], .25);
+      }
+      m.scale(.5, .5, .5);
+      renderShape(cylinder);
+      //m.identity();
+      //m.translate(2, .5, .6)
+      
+      g.strokeStyle = 'rgb(0,0,100)';
+      //renderShape(cylinder);
+      m.identity();
+      //m.translate(sin(time *4), sin(time *4)* cos(.2 * time), .7)
+      //m.rotateX(.6 * time);
+      //m.rotateZ(time * .6);
+      //m.scale(.2, .2, .2);
+      g.strokeStyle = 'rgb(100,0,0)';
+      //renderShape(sphere);
+   }
+
+    </script>
+</body>
