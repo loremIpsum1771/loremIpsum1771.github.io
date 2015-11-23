@@ -72,12 +72,7 @@
                     r * Math.sin(phi) ];
    }
     
-   var branches = new Array();
-   branches.push({
-       points: new Array({ x: 200, y: 400 }, { x: 200, y: 400 }, { x: 200, y: 400 }, { x: 200, y: 400 }),
-       direction: 0
-   });
-
+   
    
 
    function bspline(context, points) {
@@ -175,9 +170,7 @@
        var num_i = shape[0].length;
        for (var j = 0 ; j < num_j - 1 ; j++)
            for (var i = 0 ; i < num_i - 1 ; i++) {
-              //if (i == 0 || i == 1) {
-              //    console.log("shape[j][i]: " + shape[j][i] + " shape[j+1][i]: " + shape[j + 1][i] + " shape[j+1][i+1]" + shape[j + 1][i + 1] + "shape[j][i+1]" + shape[j][i + 1]);
-              //}
+             
               plotCurve([shape[j][i],
                           shape[j + 1][i],
                           shape[j + 1][i + 1],
