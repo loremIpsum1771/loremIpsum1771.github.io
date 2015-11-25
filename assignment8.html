@@ -53,7 +53,6 @@
             var moonVertexTextureCoordBuffer;
             var moonVertexIndexBuffer;
 
-
             var latitudeBands = 30;
             var longitudeBands = 30;
             var radius = 0.5;
@@ -64,7 +63,7 @@
             var indexData = [];
             //for sphere
             for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
-                var theta = latNumber * Math.PI / latitudeBands;
+                var theta = latNumber * 2 * Math.PI / latitudeBands;
                 var sinTheta = Math.sin(theta);
                 var cosTheta = Math.cos(theta);
 
