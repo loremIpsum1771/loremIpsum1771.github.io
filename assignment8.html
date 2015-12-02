@@ -1,9 +1,7 @@
 <html>
 <head>
-
     <script type="text/javascript" src="matrix4.js"></script>
     <script type="text/javascript" src="webgl-utils.js"></script>
-
     <script id="shader-fs" type="x-shader/x-fragment">
         precision highp float;
         varying vec3 uPos;
@@ -11,7 +9,6 @@
         gl_FragColor = vec4(vec3(0.,1.,1.) * (uPos.z < .5 ? uPos.z == -.5 ? .2 : .5 : 1.), 1.);
         }
     </script>
-
     <script id="shader-vs" type="x-shader/x-vertex">
         attribute vec3 aVertexPosition;
         uniform mat4 uMVMatrix;
@@ -24,7 +21,6 @@
 
         }
     </script>
-
 
     <script type="text/javascript">
     var gl;
@@ -93,7 +89,7 @@
 
     function mvPushMatrix() {
         var copy = mat4.create();
-        
+
         mat4.copy(copy, mvMatrix);
         mvMatrixStack.push(copy);
     }
@@ -107,7 +103,7 @@
         gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
         gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
 
-        
+
     }
     function degToRad(degrees) {
         return degrees * Math.PI / 180;
@@ -140,7 +136,7 @@
                 var sinPhi = Math.sin(phi);
                 var cosPhi = Math.cos(phi);
 
-               
+
                 var x = (1 + radius * Math.cos(phi)) * Math.cos(theta);
                 var y = (1 + radius * Math.cos(phi)) * Math.sin(theta);
                 var z = radius * Math.sin(phi);
@@ -286,13 +282,13 @@
         mat4.identity(mvMatrix);
 
         mat4.translate(mvMatrix, mvMatrix, [0, 0, -4.7]);
-        
+
 
         console.log("mvMatrixstack.length before first push: " + mvMatrixStack.length);
         mvPushMatrix();
 
-        
-        mat4.rotate(mvMatrix, mvMatrix, degToRad(rTorus), [0, 1, 0]);
+
+        mat4.rotate(mvMatrix, mvMatrix, degToRad(rTorus), [1, 1, 1]);
         gl.bindBuffer(gl.ARRAY_BUFFER, torusVertexPositionBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, torusVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
@@ -309,7 +305,7 @@
 
         mvPushMatrix();
 
-        mat4.rotate(mvMatrix, mvMatrix, degToRad(rSphere), [0, 1, 0]);
+        mat4.rotate(mvMatrix, mvMatrix, degToRad(rSphere), [1, 1, 1]);
         gl.bindBuffer(gl.ARRAY_BUFFER, sphereVertexPositionBuffer);
         gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, sphereVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
 
@@ -353,7 +349,7 @@
         drawScene();
         animate();
     }
-    function webGLStart() {
+    function runGL() {
         var canvas = document.getElementById("assignment 8");
         initGL(canvas);
         initShaders();
@@ -366,16 +362,12 @@
     }
     </script>
 
-
 </head>
 
-
-<body onload="webGLStart();">
+<body onload="runGL();">
     *The sphere is, in fact rotating, but because its one color it appears as though it is stationary
 
     <canvas id="assignment 8" style="border: none;" width="1000" height="600"></canvas>
 
-
 </body>
-
 </html>
