@@ -1,190 +1,362 @@
 <html>
 <head>
-    <script src=transformObj.js></script>
-</head>
-<body>
-    Currently, rendering the sphere and torus works properly; however the cylinder isn't being rendered properly, still working on it
-    <script>
-        var gl, prog;
-        function draw() {
-            gl = document.getElementById('canvas1').getContext('experimental-webgl');
-            gl.enable(gl.DEPTH_TEST);
-            gl.depthFunc(gl.LEQUAL);
-            prog = gl.createProgram();
-            function addShader(type, str) {
-                var s = gl.createShader(type);
-                gl.shaderSource(s, str);
-                gl.compileShader(s);
-                gl.attachShader(prog, s);
+
+    <script type="text/javascript" src="matrix4.js"></script>
+    <script type="text/javascript" src="webgl-utils.js"></script>
+
+    <script id="shader-fs" type="x-shader/x-fragment">
+        precision highp float;
+        varying vec3 uPos;
+        void main(void) {
+        gl_FragColor = vec4(vec3(0.,1.,1.) * (uPos.z < .5 ? uPos.z == -.5 ? .2 : .5 : 1.), 1.);
+        }
+    </script>
+
+    <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        varying vec3 uPos;
+        void main(void) {
+        uPos = aVertexPosition;
+        gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+
+
+        }
+    </script>
+
+
+    <script type="text/javascript">
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Could not initialise WebGL, sorry :-(");
+        }
+    }
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
             }
-            addShader(gl.VERTEX_SHADER, [
-               , 'attribute vec3 aPos;'
-               , 'uniform mat4 uMatrix;'
-               , 'varying vec3 uPos;'
-               , 'void main() {'
-               , '   uPos = aPos;'
-               , '   gl_Position = uMatrix * vec4(aPos, 1.);'
-               , '}',
-            ].join('\n')
-            );
-            addShader(gl.FRAGMENT_SHADER, [
-               , 'precision highp float;'
-               , 'varying vec3 uPos;'
-               , 'void main() {'
-               , '   gl_FragColor = vec4(vec3(0.,1.,1.) * (uPos.z < .5 ? uPos.z == -.5 ? .2 : .5 : 1.), 1.);'
-               , '}',
-            ].join('\n')
-            );
+            k = k.nextSibling;
+        }
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+        return shader;
+    }
+    var shaderProgram;
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Could not initialise shaders");
+        }
+        gl.useProgram(shaderProgram);
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
 
-            //triangleVertexPositionBuffer = gl.createBuffer();
-            //gl.bindBuffer(gl.ARRAY_BUFFER, triangleVertexPositionBuffer);
-            //var vertices = [
-            //     0.0, 1.0, 0.0,
-            //    -1.0, -1.0, 0.0,
-            //     1.0, -1.0, 0.0
-            //];
-            //gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-            //triangleVertexPositionBuffer.itemSize = 3;
-            //triangleVertexPositionBuffer.numItems = 3;
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
 
-            var moonVertexPositionBuffer;
-            var moonVertexNormalBuffer;
-            var moonVertexTextureCoordBuffer;
-            var moonVertexIndexBuffer;
+    }
+    var mvMatrix = mat4.create();
+    var mvMatrixStack = [];
+    var pMatrix = mat4.create();
 
-            var latitudeBands = 30;
-            var longitudeBands = 30;
-            var radius = 0.5;
+    function mvPushMatrix() {
+        var copy = mat4.create();
+        
+        mat4.copy(copy, mvMatrix);
+        mvMatrixStack.push(copy);
+    }
+    function mvPopMatrix() {
+        if (mvMatrixStack.length == 0) {
+            throw "Invalid popMatrix!";
+        }
+        mvMatrix = mvMatrixStack.pop();
+    }
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
 
-            var vertexPositionData = [];
-            var normalData = [];
-            var textureCoordData = [];
-            var indexData = [];
-            //for sphere
-            for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
-                var theta = latNumber * 2 * Math.PI / latitudeBands;
+        
+    }
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+
+    var torusVertexPositionBuffer;
+    var torusVertexIndexBuffer;
+    var sphereVertexPositionBuffer;
+    var sphereVertexIndexBuffer;
+    var cylinderVertexPositionBuffer;
+    var cylinderVertexIndexBuffer;
+
+    function initBuffers() {
+        var latitudeBands = 30;
+        var longitudeBands = 30;
+        var radius = 0.5;
+        var vertexPositionData = [];
+        var vertexPositionData2 = [];
+        var vertexPositionData3 = [];
+        var indexData = [];
+
+        //Torus
+        for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
+            var theta = latNumber * 2 * Math.PI / latitudeBands;
+            var sinTheta = Math.sin(theta);
+            var cosTheta = Math.cos(theta);
+
+            for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
+                var phi = longNumber * 2 * Math.PI / longitudeBands;
+                var sinPhi = Math.sin(phi);
+                var cosPhi = Math.cos(phi);
+
+               
+                var x = (1 + radius * Math.cos(phi)) * Math.cos(theta);
+                var y = (1 + radius * Math.cos(phi)) * Math.sin(theta);
+                var z = radius * Math.sin(phi);
+                var u = 1 - (longNumber / longitudeBands);
+                var v = 1 - (latNumber / latitudeBands);
+
+                vertexPositionData.push(radius * x);
+                vertexPositionData.push(radius * y);
+                vertexPositionData.push(radius * z)
+            }
+        }
+
+
+        for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
+            for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
+                var first = (latNumber * (longitudeBands + 1)) + longNumber;
+                var second = first + longitudeBands + 1;
+                indexData.push(first);
+                indexData.push(second);
+                indexData.push(first + 1);
+
+                indexData.push(second);
+                indexData.push(second + 1);
+                indexData.push(first + 1);
+            }
+        }
+
+        torusVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, torusVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData), gl.STATIC_DRAW);
+        torusVertexPositionBuffer.itemSize = 3;
+        torusVertexPositionBuffer.numItems = vertexPositionData.length / 3;
+
+        torusVertexIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, torusVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
+        torusVertexIndexBuffer.itemSize = 1;
+        torusVertexIndexBuffer.numItems = indexData.length;
+
+
+
+        //Sphere
+        for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
+            var theta = latNumber * Math.PI / latitudeBands;
+            var sinTheta = Math.sin(theta);
+            var cosTheta = Math.cos(theta);
+            for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
+                var phi = longNumber * 2 * Math.PI / longitudeBands;
+                var sinPhi = Math.sin(phi);
+                var cosPhi = Math.cos(phi);
+                var x = cosPhi * sinTheta;
+                var y = cosTheta;
+                var z = sinPhi * sinTheta;
+                var u = 1 - (longNumber / longitudeBands);
+                var v = 1 - (latNumber / latitudeBands);
+
+                vertexPositionData2.push(radius * x);
+                vertexPositionData2.push(radius * y);
+                vertexPositionData2.push(radius * z);
+            }
+        }
+        var indexData = [];
+        for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
+            for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
+                var first = (latNumber * (longitudeBands + 1)) + longNumber;
+                var second = first + longitudeBands + 1;
+                indexData.push(first);
+                indexData.push(second);
+                indexData.push(first + 1);
+                indexData.push(second);
+                indexData.push(second + 1);
+                indexData.push(first + 1);
+            }
+        }
+        sphereVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData2), gl.STATIC_DRAW);
+        sphereVertexPositionBuffer.itemSize = 3;
+        sphereVertexPositionBuffer.numItems = vertexPositionData2.length / 3;
+        sphereVertexIndexBuffer = gl.createBuffer();
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
+        sphereVertexIndexBuffer.itemSize = 1;
+        sphereVertexIndexBuffer.numItems = indexData.length;
+
+        //Cylinder
+        for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
+
+            for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
+                var u = 1 - (longNumber / longitudeBands);
+                var v = 1 - (latNumber / latitudeBands);
+                var theta = 2 * u * Math.PI;
                 var sinTheta = Math.sin(theta);
                 var cosTheta = Math.cos(theta);
 
-                for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
-                    var phi = longNumber * 2 * Math.PI / longitudeBands;
-                    var sinPhi = Math.sin(phi);
-                    var cosPhi = Math.cos(phi);
+                var x = cosTheta;
+                var y = sinTheta;
+                var z = 2 * v - 1;
 
 
-
-                    //var theta = 2 * Math.PI * uv[0];
-                    //var phi = 2 * Math.PI * uv[1];
-
-                    //return [(1 + r * Math.cos(phi)) * Math.cos(theta),
-                    //         (1 + r * Math.cos(phi)) * Math.sin(theta),
-                    //              r * Math.sin(phi)];
-
-               //     Math.cos(theta),
-               //Math.sin(theta),
-               // 2 * v - 1
-
-                    //var x =  Math.cos(theta);
-                    //var y = Math.sin(theta);
-                    //var z = 2 * latNumber - 1;
-
-                    var x = (1 + radius * Math.cos(phi)) * Math.cos(theta);
-                    var y = (1 + radius * Math.cos(phi)) * Math.sin(theta);
-                    var z = radius * Math.sin(phi);
-                    var u = 1 - (longNumber / longitudeBands);
-                    var v = 1 - (latNumber / latitudeBands);
-
-                    normalData.push(x);
-                    normalData.push(y);
-                    normalData.push(z);
-                    textureCoordData.push(u);
-                    textureCoordData.push(v);
-                    vertexPositionData.push(radius * x);
-                    vertexPositionData.push(radius * y);
-                    vertexPositionData.push(radius * z)
-                }
-            }
-
-            for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
-                for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
-                    var first = (latNumber * (longitudeBands + 1)) + longNumber;
-                    var second = first + longitudeBands + 1;
-                    indexData.push(first);
-                    indexData.push(second);
-                    indexData.push(first + 1);
-
-                    indexData.push(second);
-                    indexData.push(second + 1);
-                    indexData.push(first + 1);
-                }
-            }
-
-            //moonVertexNormalBuffer = gl.createBuffer();
-            //gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexNormalBuffer);
-            //gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalData), gl.STATIC_DRAW);
-            //moonVertexNormalBuffer.itemSize = 3;
-            //moonVertexNormalBuffer.numItems = normalData.length / 3;
-
-
-            moonVertexPositionBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexPositionBuffer);
-            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData), gl.STATIC_DRAW);
-            moonVertexPositionBuffer.itemSize = 3;
-            moonVertexPositionBuffer.numItems = vertexPositionData.length / 3;
-
-            moonVertexIndexBuffer = gl.createBuffer();
-            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, moonVertexIndexBuffer);
-            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
-            moonVertexIndexBuffer.itemSize = 1;
-            moonVertexIndexBuffer.numItems = indexData.length;
-
-
-
-
-            //var vertices = [
-            //   -.5,-.5, .5,
-            //   -.5, .5, .5,
-            //    .5,-.5, .5,
-            //    .5, .5, .5,
-            //    .5,-.5,-.5,
-            //    .5, .5,-.5,
-            //   -.5,-.5,-.5,
-            //   -.5, .5,-.5,
-            //   -.5,-.5, .5,
-            //   -.5, .5, .5,
-            //];
-
-
-
-
-            function address(name) { return gl.getUniformLocation(prog, name); }
-            gl.linkProgram(prog);
-            //gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-            //gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-            var attr = gl.getAttribLocation(prog, 'aPos');
-            gl.enableVertexAttribArray(attr);
-            gl.vertexAttribPointer(attr, 3, gl.FLOAT, false, 0, 0);
-            gl.useProgram(prog);
-
-            setInterval(tick, 1000 / 60);
-
-            function tick() {
-                var turn = (new Date()).getTime() / 1000.;
-                var cos = Math.cos(turn);
-                var sin = Math.sin(turn);
-                var adjust = gl.canvas.height / gl.canvas.width;
-                var matrix = [adjust * cos, 0, sin, .1 * sin,
-                                        0, 1, 0, 0,
-                              -adjust * sin, 0, cos, .1 * cos,
-                                        0, 0, 0, 1];
-
-                gl.uniformMatrix4fv(address('uMatrix'), false, matrix);
-                gl.drawElements(gl.TRIANGLES, moonVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
-                //gl.drawArrays(gl.TRIANGLE_STRIP, 0, vertices.length / 3);
+                vertexPositionData3.push(radius * x);
+                vertexPositionData3.push(radius * y);
+                vertexPositionData3.push(radius * z);
             }
         }
-        setTimeout(draw, 100);
+        var indexData = [];
+        for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
+            for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
+                var first = (latNumber * (longitudeBands + 1)) + longNumber;
+                var second = first + longitudeBands + 1;
+                indexData.push(first);
+                indexData.push(second);
+                indexData.push(first + 1);
+                indexData.push(second);
+                indexData.push(second + 1);
+                indexData.push(first + 1);
+            }
+        }
+        cylinderVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, cylinderVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData3), gl.STATIC_DRAW);
+        cylinderVertexPositionBuffer.itemSize = 3;
+        cylinderVertexPositionBuffer.numItems = vertexPositionData3.length / 3;
+        cylinderVertexIndexBuffer = gl.createBuffer();
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cylinderVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STATIC_DRAW);
+        cylinderVertexIndexBuffer.itemSize = 1;
+        cylinderVertexIndexBuffer.numItems = indexData.length;
+    }
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+        mat4.perspective (pMatrix, 45.0, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+
+        mat4.identity(mvMatrix);
+
+        mat4.translate(mvMatrix, mvMatrix, [0, 0, -4.7]);
+        //mat4.multiply(mvMatrix, mvMatrix, torusRotationMatrix);
+
+        console.log("mvMatrixstack.length before first push: " + mvMatrixStack.length);
+        mvPushMatrix();
+
+
+        //mat4.rotate(mvMatrix, degToRad(rPyramid), [0, 1, 0]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, torusVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, torusVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, torusVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, torusVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+
+        mvPopMatrix();
+        console.log("mvMatrixstack.length after first pop: " + mvMatrixStack.length);
+
+
+        mat4.translate(mvMatrix, mvMatrix, [3.0, 0.0, 0.0]);
+
+        mvPushMatrix();
+
+        //mat4.rotate(mvMatrix, degToRad(rCube), [1, 1, 1]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, sphereVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, sphereVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, sphereVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, sphereVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+        mvPopMatrix();
+
+        mat4.translate(mvMatrix, mvMatrix, [-4.0, 2.0, 0.0]);
+
+        mvPushMatrix();
+
+        //mat4.rotate(mvMatrix, degToRad(rCube), [1, 1, 1]);
+        gl.bindBuffer(gl.ARRAY_BUFFER, cylinderVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, cylinderVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cylinderVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, cylinderVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+        mvPopMatrix();
+
+    }
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+    }
+    function webGLStart() {
+        var canvas = document.getElementById("assignment 8");
+        initGL(canvas);
+        initShaders();
+        initBuffers();
+
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+
+        tick();
+    }
     </script>
-    <canvas id=canvas1 width=1000 height=1000></canvas>
+
+
+</head>
+
+
+<body onload="webGLStart();">
+
+
+    <canvas id="assignment 8" style="border: none;" width="1000" height="600"></canvas>
+
+
 </body>
+
 </html>
