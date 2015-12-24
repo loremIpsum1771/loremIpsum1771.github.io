@@ -1,0 +1,584 @@
+<html>
+
+<head>
+  
+    
+   <!---Used this framework instead of the one given as point lighting had been implemented here-->
+    <script type="text/javascript" src="gl-matrix-2.2.1.js"></script>
+    <script type="text/javascript" src="webgl-utils.js"></script>
+
+    <script id="shader-fs" type="x-shader/x-fragment">
+        precision mediump float;
+        varying vec2 vTextureCoord;
+        varying vec3 vLightWeighting;
+        uniform sampler2D uSampler;
+        void main(void) {
+        vec4 textureColor = texture2D(uSampler, vec2(vTextureCoord.s, vTextureCoord.t));
+        gl_FragColor = vec4(textureColor.rgb * vLightWeighting, textureColor.a);
+        }
+    </script>
+
+    <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec3 aVertexPosition;
+        attribute vec3 aVertexNormal;
+        attribute vec2 aTextureCoord;
+        uniform mat4 uMVMatrix;
+        uniform mat4 uPMatrix;
+        uniform mat3 uNMatrix;
+        uniform vec3 uAmbientColor;
+        uniform vec3 uPointLightingLocation;
+        uniform vec3 uPointLightingColor;
+        uniform bool uUseLighting;
+        varying vec2 vTextureCoord;
+        varying vec3 vLightWeighting;
+        void main(void) {
+        vec4 mvPosition = uMVMatrix * vec4(aVertexPosition, 1.0);
+        gl_Position = uPMatrix * mvPosition;
+        vTextureCoord = aTextureCoord;
+        if (!uUseLighting) {
+        vLightWeighting = vec3(1.0, 1.0, 1.0);
+        } else {
+        vec3 lightDirection = normalize(uPointLightingLocation - mvPosition.xyz);
+        vec3 transformedNormal = uNMatrix * aVertexNormal;
+        float directionalLightWeighting = max(dot(transformedNormal, lightDirection), 0.0);
+        vLightWeighting = uAmbientColor + uPointLightingColor * directionalLightWeighting;
+        }
+        }
+    </script>
+
+
+    <script type="text/javascript">
+    var gl;
+    function initGL(canvas) {
+        try {
+            gl = canvas.getContext("webgl");
+            gl.viewportWidth = canvas.width;
+            gl.viewportHeight = canvas.height;
+        } catch (e) {
+        }
+        if (!gl) {
+            alert("Webgl couldn't be initialized");
+        }
+    }
+    function getShader(gl, id) {
+        var shaderScript = document.getElementById(id);
+        if (!shaderScript) {
+            return null;
+        }
+        var str = "";
+        var k = shaderScript.firstChild;
+        while (k) {
+            if (k.nodeType == 3) {
+                str += k.textContent;
+            }
+            k = k.nextSibling;
+        }
+        var shader;
+        if (shaderScript.type == "x-shader/x-fragment") {
+            shader = gl.createShader(gl.FRAGMENT_SHADER);
+        } else if (shaderScript.type == "x-shader/x-vertex") {
+            shader = gl.createShader(gl.VERTEX_SHADER);
+        } else {
+            return null;
+        }
+        gl.shaderSource(shader, str);
+        gl.compileShader(shader);
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert(gl.getShaderInfoLog(shader));
+            return null;
+        }
+        return shader;
+    }
+    var shaderProgram;
+    function initShaders() {
+        var fragmentShader = getShader(gl, "shader-fs");
+        var vertexShader = getShader(gl, "shader-vs");
+        shaderProgram = gl.createProgram();
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert("Shaders couldn't be initialized");
+        }
+        gl.useProgram(shaderProgram);
+        shaderProgram.vertexPositionAttribute = gl.getAttribLocation(shaderProgram, "aVertexPosition");
+        gl.enableVertexAttribArray(shaderProgram.vertexPositionAttribute);
+        shaderProgram.textureCoordAttribute = gl.getAttribLocation(shaderProgram, "aTextureCoord");
+        gl.enableVertexAttribArray(shaderProgram.textureCoordAttribute);
+        shaderProgram.vertexNormalAttribute = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+        gl.enableVertexAttribArray(shaderProgram.vertexNormalAttribute);
+        shaderProgram.pMatrixUniform = gl.getUniformLocation(shaderProgram, "uPMatrix");
+        shaderProgram.mvMatrixUniform = gl.getUniformLocation(shaderProgram, "uMVMatrix");
+        shaderProgram.nMatrixUniform = gl.getUniformLocation(shaderProgram, "uNMatrix");
+        shaderProgram.samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
+        shaderProgram.useLightingUniform = gl.getUniformLocation(shaderProgram, "uUseLighting");
+        shaderProgram.ambientColorUniform = gl.getUniformLocation(shaderProgram, "uAmbientColor");
+        shaderProgram.pointLightingLocationUniform = gl.getUniformLocation(shaderProgram, "uPointLightingLocation");
+        shaderProgram.pointLightingColorUniform = gl.getUniformLocation(shaderProgram, "uPointLightingColor");
+    }
+    function handleLoadedTexture(texture) {
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, texture.image);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+    var moonTexture;
+    var neptuneTexture;
+    var starTexture;
+    function initTextures() {
+        moonTexture = gl.createTexture();
+        moonTexture.image = new Image();
+        moonTexture.image.onload = function () {
+            handleLoadedTexture(moonTexture)
+        };
+        moonTexture.image.src = "moon.gif";
+
+        neptuneTexture = gl.createTexture();
+        neptuneTexture.image = new Image();
+        neptuneTexture.image.onload = function () {
+            handleLoadedTexture(neptuneTexture)
+        };
+        neptuneTexture.image.src = "neptune.png";
+
+        starTexture = gl.createTexture();
+        starTexture.image = new Image();
+        starTexture.image.onload = function () {
+            handleLoadedTexture(starTexture)
+        };
+        starTexture.image.src = "star.png";
+    }
+    var mvMatrix = mat4.create();
+    var mvMatrixStack = [];
+    var pMatrix = mat4.create();
+    function mvPushMatrix() {
+        var copy = mat4.create();
+        
+        mat4.copy(copy, mvMatrix);
+        mvMatrixStack.push(copy);
+    }
+    function mvPopMatrix() {
+        if (mvMatrixStack.length == 0) {
+            throw "Invalid popMatrix!";
+        }
+        mvMatrix = mvMatrixStack.pop();
+    }
+    function setMatrixUniforms() {
+        gl.uniformMatrix4fv(shaderProgram.pMatrixUniform, false, pMatrix);
+        gl.uniformMatrix4fv(shaderProgram.mvMatrixUniform, false, mvMatrix);
+        var normalMatrix = mat3.create();
+        
+        mat3.normalFromMat4(normalMatrix, mvMatrix);
+        gl.uniformMatrix3fv(shaderProgram.nMatrixUniform, false, normalMatrix);
+    }
+    function degToRad(degrees) {
+        return degrees * Math.PI / 180;
+    }
+    
+    var moonVertexPositionBuffer;
+    var moonVertexNormalBuffer;
+    var moonVertexTextureCoordBuffer;
+    var moonVertexIndexBuffer;
+
+
+    var neptuneVertexPositionBuffer;
+    var neptuneVertexNormalBuffer;
+    var neptuneVertexTextureCoordBuffer;
+    var neptuneVertexIndexBuffer;
+
+    var starVertexPositionBuffer;
+    var starVertexNormalBuffer;
+    var starVertexTextureCoordBuffer;
+    var starVertexIndexBuffer;
+
+    function initBuffers() {
+        
+        var latitudeBands = 30;
+        var longitudeBands = 30;
+        
+        var radius = 0.5;
+        var vertexPositionData = [];
+        var vertexPositionData2 = [];
+        var vertexPositionData3 = [];
+        var normalData = [];
+        var textureCoordData = [];
+        //Creates parametric Sphere for the moon
+        for (var latNumber=0; latNumber <= latitudeBands; latNumber++) {
+            var theta = latNumber * Math.PI / latitudeBands;
+            var sinTheta = Math.sin(theta);
+            var cosTheta = Math.cos(theta);
+            for (var longNumber=0; longNumber <= longitudeBands; longNumber++) {
+                var phi = longNumber * 2 * Math.PI / longitudeBands;
+                var sinPhi = Math.sin(phi);
+                var cosPhi = Math.cos(phi);
+                var x = cosPhi * sinTheta;
+                var y = cosTheta;
+                var z = sinPhi * sinTheta;
+                var u = 1 - (longNumber / longitudeBands);
+                var v = 1 - (latNumber / latitudeBands);
+                normalData.push(x);
+                normalData.push(y);
+                normalData.push(z);
+                textureCoordData.push(u);
+                textureCoordData.push(v);
+                vertexPositionData.push(radius * x);
+                vertexPositionData.push(radius * y);
+                vertexPositionData.push(radius * z);
+            }
+        }
+        var indexData = [];
+        for (var latNumber=0; latNumber < latitudeBands; latNumber++) {
+            for (var longNumber=0; longNumber < longitudeBands; longNumber++) {
+                var first = (latNumber * (longitudeBands + 1)) + longNumber;
+                var second = first + longitudeBands + 1;
+                indexData.push(first);
+                indexData.push(second);
+                indexData.push(first + 1);
+                indexData.push(second);
+                indexData.push(second + 1);
+                indexData.push(first + 1);
+            }
+        }
+        moonVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalData), gl.STATIC_DRAW);
+        moonVertexNormalBuffer.itemSize = 3;
+        moonVertexNormalBuffer.numItems = normalData.length / 3;
+        moonVertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexTextureCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordData), gl.STATIC_DRAW);
+        moonVertexTextureCoordBuffer.itemSize = 2;
+        moonVertexTextureCoordBuffer.numItems = textureCoordData.length / 2;
+        moonVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData), gl.STATIC_DRAW);
+        moonVertexPositionBuffer.itemSize = 3;
+        moonVertexPositionBuffer.numItems = vertexPositionData.length / 3;
+        moonVertexIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, moonVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STREAM_DRAW);
+        moonVertexIndexBuffer.itemSize = 1;
+        moonVertexIndexBuffer.numItems = indexData.length;
+
+        //Creates parametric Sphere for the planet
+        var radius = 1.3;
+        for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
+            var theta = latNumber * Math.PI / latitudeBands;
+            var sinTheta = Math.sin(theta);
+            var cosTheta = Math.cos(theta);
+            for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
+                var phi = longNumber * 2 * Math.PI / longitudeBands;
+                var sinPhi = Math.sin(phi);
+                var cosPhi = Math.cos(phi);
+                var x = cosPhi * sinTheta;
+                var y = cosTheta;
+                var z = sinPhi * sinTheta;
+                var u = 1 - (longNumber / longitudeBands);
+                var v = 1 - (latNumber / latitudeBands);
+                normalData.push(x);
+                normalData.push(y);
+                normalData.push(z);
+                textureCoordData.push(u);
+                textureCoordData.push(v);
+                vertexPositionData2.push(radius * x);
+                vertexPositionData2.push(radius * y);
+                vertexPositionData2.push(radius * z);
+            }
+        }
+        var indexData = [];
+        for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
+            for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
+                var first = (latNumber * (longitudeBands + 1)) + longNumber;
+                var second = first + longitudeBands + 1;
+                indexData.push(first);
+                indexData.push(second);
+                indexData.push(first + 1);
+                indexData.push(second);
+                indexData.push(second + 1);
+                indexData.push(first + 1);
+            }
+        }
+        neptuneVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, neptuneVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalData), gl.STATIC_DRAW);
+        neptuneVertexNormalBuffer.itemSize = 3;
+        neptuneVertexNormalBuffer.numItems = normalData.length / 3;
+        neptuneVertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, neptuneVertexTextureCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordData), gl.STATIC_DRAW);
+        neptuneVertexTextureCoordBuffer.itemSize = 2;
+        neptuneVertexTextureCoordBuffer.numItems = textureCoordData.length / 2;
+        neptuneVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, neptuneVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData2), gl.STATIC_DRAW);
+        neptuneVertexPositionBuffer.itemSize = 3;
+        neptuneVertexPositionBuffer.numItems = vertexPositionData2.length / 3;
+        neptuneVertexIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, neptuneVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STREAM_DRAW);
+        neptuneVertexIndexBuffer.itemSize = 1;
+        neptuneVertexIndexBuffer.numItems = indexData.length;
+
+        
+        //Creates parametric Sphere for the Sun
+        var radius = 5;
+        for (var latNumber = 0; latNumber <= latitudeBands; latNumber++) {
+            var theta = latNumber * Math.PI / latitudeBands;
+            var sinTheta = Math.sin(theta);
+            var cosTheta = Math.cos(theta);
+            for (var longNumber = 0; longNumber <= longitudeBands; longNumber++) {
+                var phi = longNumber * 2 * Math.PI / longitudeBands;
+                var sinPhi = Math.sin(phi);
+                var cosPhi = Math.cos(phi);
+                var x = cosPhi * sinTheta;
+                var y = cosTheta;
+                var z = sinPhi * sinTheta;
+                var u = 1 - (longNumber / longitudeBands);
+                var v = 1 - (latNumber / latitudeBands);
+                normalData.push(x);
+                normalData.push(y);
+                normalData.push(z);
+                textureCoordData.push(u);
+                textureCoordData.push(v);
+                vertexPositionData3.push(radius * x);
+                vertexPositionData3.push(radius * y);
+                vertexPositionData3.push(radius * z);
+            }
+        }
+        var indexData = [];
+        for (var latNumber = 0; latNumber < latitudeBands; latNumber++) {
+            for (var longNumber = 0; longNumber < longitudeBands; longNumber++) {
+                var first = (latNumber * (longitudeBands + 1)) + longNumber;
+                var second = first + longitudeBands + 1;
+                indexData.push(first);
+                indexData.push(second);
+                indexData.push(first + 1);
+                indexData.push(second);
+                indexData.push(second + 1);
+                indexData.push(first + 1);
+            }
+        }
+        starVertexNormalBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVertexNormalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normalData), gl.STATIC_DRAW);
+        starVertexNormalBuffer.itemSize = 3;
+        starVertexNormalBuffer.numItems = normalData.length / 3;
+        starVertexTextureCoordBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVertexTextureCoordBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(textureCoordData), gl.STATIC_DRAW);
+        starVertexTextureCoordBuffer.itemSize = 2;
+        starVertexTextureCoordBuffer.numItems = textureCoordData.length / 2;
+        starVertexPositionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVertexPositionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertexPositionData3), gl.STATIC_DRAW);
+        starVertexPositionBuffer.itemSize = 3;
+        starVertexPositionBuffer.numItems = vertexPositionData3.length / 3;
+        starVertexIndexBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, starVertexIndexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indexData), gl.STREAM_DRAW);
+        starVertexIndexBuffer.itemSize = 1;
+        starVertexIndexBuffer.numItems = indexData.length;
+
+    }
+    var moonAngle = 180;
+    var neptuneAngle = 360;
+    var starAngle = 0;
+
+    function drawScene() {
+        gl.viewport(0, 0, gl.viewportWidth, gl.viewportHeight);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        
+        mat4.perspective (pMatrix, 45.0, gl.viewportWidth / gl.viewportHeight, 0.1, 100.0);
+        var lighting = document.getElementById("lighting").checked;
+        gl.uniform1i(shaderProgram.useLightingUniform, lighting);
+        if (lighting) {
+            gl.uniform3f(
+                shaderProgram.ambientColorUniform,
+                parseFloat(document.getElementById("ambientR").value),
+                parseFloat(document.getElementById("ambientG").value),
+                parseFloat(document.getElementById("ambientB").value)
+            );
+            gl.uniform3f(
+                shaderProgram.pointLightingLocationUniform,
+                parseFloat(document.getElementById("lightPositionX").value),
+                parseFloat(document.getElementById("lightPositionY").value),
+                parseFloat(document.getElementById("lightPositionZ").value)
+            );
+            gl.uniform3f(
+                shaderProgram.pointLightingColorUniform,
+                parseFloat(document.getElementById("pointR").value),
+                parseFloat(document.getElementById("pointG").value),
+                parseFloat(document.getElementById("pointB").value)
+            );
+        }
+        mat4.identity(mvMatrix);
+        
+        mat4.translate(mvMatrix, mvMatrix, [0, 0, -16]);
+        mvPushMatrix();
+
+        //user defined translations
+        var xt = document.getElementById("nepPositionX").value;
+        var yt = document.getElementById("nepPositionY").value;
+        var zt = document.getElementById("nepPositionZ").value;
+
+
+
+        mat4.rotate(mvMatrix, mvMatrix, degToRad(neptuneAngle), [0, 1, 0]);
+        mat4.translate(mvMatrix, mvMatrix, [xt, yt, zt]);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, neptuneTexture);
+        gl.uniform1i(shaderProgram.samplerUniform, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, neptuneVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, neptuneVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, neptuneVertexTextureCoordBuffer);
+        gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, neptuneVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, neptuneVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, neptuneVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, neptuneVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, neptuneVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+
+
+
+
+        mat4.rotate(mvMatrix, mvMatrix, degToRad(moonAngle), [0, 1, 0]);
+        mat4.translate(mvMatrix, mvMatrix, [5, 0, 0]);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, moonTexture);
+        gl.uniform1i(shaderProgram.samplerUniform, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, moonVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexTextureCoordBuffer);
+        gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, moonVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, moonVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, moonVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, moonVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, moonVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+
+
+        mvPopMatrix();
+
+        mvPushMatrix();
+
+        mat4.rotate(mvMatrix, mvMatrix, degToRad(starAngle), [0, 0, 1]);
+        var x = document.getElementById("lightPositionX").value;
+        var y = document.getElementById("lightPositionY").value;
+        var z = document.getElementById("lightPositionZ").value;
+        mat4.translate(mvMatrix, mvMatrix, [x, y, z]);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, starTexture);
+        gl.uniform1i(shaderProgram.samplerUniform, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVertexPositionBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexPositionAttribute, starVertexPositionBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVertexTextureCoordBuffer);
+        gl.vertexAttribPointer(shaderProgram.textureCoordAttribute, starVertexTextureCoordBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVertexNormalBuffer);
+        gl.vertexAttribPointer(shaderProgram.vertexNormalAttribute, starVertexNormalBuffer.itemSize, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, starVertexIndexBuffer);
+        setMatrixUniforms();
+        gl.drawElements(gl.TRIANGLES, starVertexIndexBuffer.numItems, gl.UNSIGNED_SHORT, 0);
+
+        mvPopMatrix();
+    }
+    
+    
+    var lastTime = 0;
+    function animate(planet,moon) {
+        var timeNow = new Date().getTime();
+        if (lastTime != 0) {
+            var elapsed = timeNow - lastTime;
+            moonAngle += moon * elapsed;
+            neptuneAngle += planet * elapsed;
+       
+        }
+        lastTime = timeNow;
+    }
+    function tick() {
+        requestAnimFrame(tick);
+        drawScene();
+        var planet = document.getElementById("planetspeed").value;
+        var moon = document.getElementById("moonspeed").value;
+        animate(planet,moon);
+
+    }
+    function webGLStart() {
+        var canvas = document.getElementById("finalproject");
+        initGL(canvas);
+        initShaders();
+        initBuffers();
+        initTextures();
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.enable(gl.DEPTH_TEST);
+        tick();
+    }
+    
+    </script>
+
+
+</head>
+
+
+<body onload="webGLStart();">
+    Scroll down for options
+
+    <canvas id="finalproject" style="border: none;" width="1300" height="600"></canvas>
+    <br />
+    <br />    
+
+    <table style="border: 0; padding: 10px;">
+        
+        <tr>
+            <td><b>Sun Location:</b>
+            <td>X: <input type="text" id="lightPositionX" value="0.0" />
+            <td>Y: <input type="text" id="lightPositionY" value="0.0" />
+            <td>Z: <input type="text" id="lightPositionZ" value="-8.0" />
+        </tr>
+
+        <tr>
+            <td><b>Planet Speeds:</b>
+            <td>Moon: <input type="text" id="moonspeed" value="0.01" />
+            <td>Planet: <input type="text" id="planetspeed" value="0.06" />
+        </tr>
+
+
+        <tr>
+            <td><b>Planet Translation:</b>
+            <td>X: <input type="text" id="nepPositionX" value="10.0" />
+            <td>Y: <input type="text" id="nepPositionY" value="0.0" />
+            <td>Z: <input type="text" id="nepPositionZ" value="0.0" />
+        </tr>
+
+        <tr>
+            <td><b>Sunlight Color:</b>
+            <td>R: <input type="text" id="pointR" value="0.8" />
+            <td>G: <input type="text" id="pointG" value="0.8" />
+            <td>B: <input type="text" id="pointB" value="0.8" />
+        </tr>
+    </table>
+
+    
+
+    <table style="border: 0; padding: 10px;">
+        <tr>
+            <td><b>Ambient Color:</b>
+            <td>R: <input type="text" id="ambientR" value="0.2" />
+            <td>G: <input type="text" id="ambientG" value="0.2" />
+            <td>B: <input type="text" id="ambientB" value="0.2" />
+        </tr>
+    </table>
+    <input type="checkbox" id="lighting" checked /><br />
+    <br />
+
+    
+    <br />
+    <br />
+
+    
+</body>
+
+</html>
